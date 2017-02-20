@@ -4,25 +4,30 @@ import imaplib
 import email
 import datetime
 import struct
-import logging
+# import logging
 import os
 import sys
 from win32com.shell import shell, shellcon
+import servicemanager
 
 class read_email():
     def __init__(self):
-        self.app_data_local = shell.SHGetFolderPath(0, shellcon.CSIDL_LOCAL_APPDATA, None, 0)
-        dir_prg_log = os.path.join(self.app_data_local, "elabora_file_picking")
-        if not os.path.exists(dir_prg_log):
-            os.makedirs(dir_prg_log)
+        # self.app_data_local = shell.SHGetFolderPath(0, shellcon.CSIDL_LOCAL_APPDATA, None, 0)
+        # dir_prg_log = os.path.join(self.app_data_local, "elabora_file_picking")
+        # if not os.path.exists(dir_prg_log):
+        #     os.makedirs(dir_prg_log)
 
-        logging.basicConfig(filename=os.path.join(dir_prg_log, 'elabora_file_picking.log'), level=logging.DEBUG)
+        # logging.basicConfig(filename=os.path.join(dir_prg_log, 'elabora_file_picking.log'), level=logging.DEBUG)
         self.parser = ConfigParser()
         self.parser.read(os.path.join(os.path.dirname(os.path.realpath(__file__)), "read_email.ini"))
         self.conn = pymssql.Connection
 
     def get_mail(self):
-        logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " Controllo casella di posta")
+        servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
+                              0xF000, #  Messaggio generico
+                              (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " Controllo casella di posta", ""))
+
+        # logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " Controllo casella di posta")
         return_value = None
         try:
             mail = imaplib.IMAP4_SSL(self.parser.get('email_configuration', 'imap_ssl_server'))
@@ -34,6 +39,12 @@ class read_email():
 
             if retcode == 'OK':
                 msgs = msgs[0].split()
+                if len(msgs) == 0:
+                    # logging.info("Nessun messaggio da leggere sul server.")
+                    servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
+                                          0xF000,  # Messaggio generico
+                                          (datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                                          + "Nessun messaggio da leggere sul server.", ""))
 
                 for emailid in msgs:
                     resp, data = mail.fetch(emailid, "(RFC822)")
@@ -52,8 +63,14 @@ class read_email():
 
                         filename = part.get_filename()
                         if filename is not None:
-                            logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " Trovato allegato: "
-                                         + filename + ' da ' + email_domain)
+                            servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
+                                                  0xF000,  # Messaggio generico
+                                                  (datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                                                  + " Trovato allegato: "
+                                                  + filename + ' da ' + email_domain, ""))
+
+                            # logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " Trovato allegato: "
+                            #             + filename + ' da ' + email_domain)
                             return {"raw_file": part.get_payload(decode=True), "file_name": filename, "domain": email_domain}
                             # Nel caso volessimo salvare i file in una cartella decisa
                             # sv_path = os.path.join(svdir, filename)
@@ -63,10 +80,18 @@ class read_email():
                             #    fp.write(part.get_payload(decode=True))
                             #    fp.close()
             else:
-                logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " Nessun messaggio da leggere")
+                servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
+                                      0xF000,  # Messaggio generico
+                                      (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " controllo posta retcode: "
+                                      + retcode, ""))
+
+                # logging.warning(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " controllo posta retcode: " + retcode)
                 return return_value
         except:
-            logging.error("Errore inatteso lettura email: " + str(sys.exc_info()[0]))
+            servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
+                                  0xF000,  # Messaggio generico
+                                  (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + str(sys.exc_info()[0]), ""))
+            # logging.error("Errore inatteso lettura email: " + str(sys.exc_info()[0]))
             return return_value
 
     def write_db_record(self, email_data):
@@ -107,6 +132,7 @@ class read_email():
         last_row_id = self.cursor.lastrowid
 
         try:
+            return_list = []
             if CKYForn == "341.00118":
                 return_list = self.write_dtl_00118(last_row_id, email_data)
 
@@ -121,16 +147,29 @@ class read_email():
 
             if CKYForn == "341.00393":
                 return_list = self.write_dtl_00393(last_row_id, email_data)
-            # Aggiorno i dati del record di testata con le info lette dal file: numero bolla e data bolla
-            self.cursor.execute(("""UPDATE TFbl_FileBolle set sFblBolla = '{0}', dFblDataBolla = '{1}',
-                dFblDataElab = '{2}' WHERE iFblId = {3} """).format(*return_list))
 
-            self.conn.commit()
+            if return_list:
+                # Aggiorno i dati del record di testata con le info lette dal file: numero bolla e data bolla
+                self.cursor.execute(("""UPDATE TFbl_FileBolle set sFblBolla = '{0}', dFblDataBolla = '{1}',
+                    dFblDataElab = '{2}' WHERE iFblId = {3} """).format(*return_list))
+            else:
+                servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
+                                      0xF000,  # Messaggio generico
+                                      (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + "EMail sconosciuta!", ""))
+                # logging.error(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + "EMail sconosciuta!")
+
+                self.conn.commit()
 
         except:
-            logging.error("Errore inatteso scrittura dati: " + str(sys.exc_info()[0]))
+            servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
+                                  0xF000,  # Messaggio generico
+                                  (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + str(sys.exc_info()[0]), ""))
+            # logging.error(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + "Errore inatteso scrittura dati: " + str(sys.exc_info()[0]))
 
-        logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " Chiusura ...")
+        servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
+                              0xF000,  # Messaggio generico
+                              (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " Chiusura ...", ""))
+        # logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " Chiusura ...")
         self.conn.close()
 
     def is_number(self, s):
@@ -142,11 +181,18 @@ class read_email():
 
     def write_dtl_00031(self, id_fbl, email_data):
         # ************ NEW FORM
-        logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00031")
+        servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
+                              0xF000,  # Messaggio generico
+                              (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00031", ""))
+
+        # logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00031")
 
     def write_dtl_00032(self, id_fbl, email_data):
         # ************ FALMEC utilizza file txt
-        logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00032")
+        servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
+                              0xF000,  # Messaggio generico
+                              (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00032", ""))
+        # logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00032")
         fieldwidths = (4, -2, 8, -5, 4, 23, -23, 6, )  # I campi valori rappresentano i campi da ignorare.
         fmtstring = ' '.join('{}{}'.format(abs(fw), 'x' if fw < 0 else 's') for fw in fieldwidths)
         fieldstruct = struct.Struct(fmtstring)
@@ -174,7 +220,10 @@ class read_email():
 
     def write_dtl_00034(self, id_fbl, email_data):
         # ************ ELMI utilizza file xls
-        logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00034")
+        servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
+                              0xF000,  # Messaggio generico
+                              (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00034", ""));
+        # logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00034")
         import xlrd
 
         num_bolla = 0
@@ -197,7 +246,10 @@ class read_email():
 
     def write_dtl_00118(self, id_fbl, email_data):
         # ************ BOSCH utilizza file csv
-        logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00018")
+        servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
+                              0xF000,  # Messaggio generico
+                              (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00018", ""))
+        # logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00018")
 
         num_bolla = 0
         data_bolla = datetime.datetime.now().strftime("%d/%m/%Y")
@@ -217,7 +269,10 @@ class read_email():
 
     def write_dtl_00393(self, id_fbl, email_data):
         # ************ WHIRPOOL utilizza file txt separato da ;
-        logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00393")
+        servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
+                              0xF000,  # Messaggio generico
+                              (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00393", ""))
+        # logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00393")
 
         num_bolla = 0
         data_bolla = datetime.datetime.now().strftime("%Y%m%d")
@@ -241,7 +296,10 @@ class read_email():
 
     def write_dtl_00420(self, id_fbl, email_data):
         # ************ VIBO utilizza foglio excel!
-        logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00420")
+        servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
+                              0xF000,  # Messaggio generico
+                              (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00420", ""))
+        # logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00420")
 
         num_bolla = 0
         data_bolla = datetime.datetime.now().strftime("%Y%m%d")
@@ -265,8 +323,8 @@ class read_email():
         return [num_bolla, datetime.datetime.strptime(str(data_bolla), "%Y%m%d").strftime("%Y-%m-%d"),
                 datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S"), id_fbl]
 
-re = read_email()
-email_data = re.get_mail()
-while email_data:
-    re.write_db_record(email_data)
-    email_data = re.get_mail()
+#re = read_email()
+#email_data = re.get_mail()
+#while email_data:
+#    re.write_db_record(email_data)
+#    email_data = re.get_mail()

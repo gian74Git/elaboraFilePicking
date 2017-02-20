@@ -6,7 +6,6 @@ import servicemanager
 from read_email import read_email
 import datetime
 
-
 class AppServerSvc(win32serviceutil.ServiceFramework):
     _svc_name_ = "elabora_file_picking"
     _svc_display_name_ = "elabora_file_picking"
@@ -26,11 +25,13 @@ class AppServerSvc(win32serviceutil.ServiceFramework):
         servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE, servicemanager.PYS_SERVICE_STARTED,
                               (self._svc_name_, ''))
         rc = None
+        first_time = True
         date_now = datetime.datetime.now()
         while rc != win32event.WAIT_OBJECT_0:
             try:
                 # Per impostazione predefinita leggo la mail ogni 10 minuti. Caso mai modificare o portare a parametro.
-                if datetime.datetime.now() - date_now > datetime.timedelta(minutes=10):
+                if first_time | (datetime.datetime.now() - date_now > datetime.timedelta(minutes=10)):
+                    first_time = False
                     date_now = datetime.datetime.now()
                     re = read_email()
                     email_data = re.get_mail()
@@ -40,6 +41,7 @@ class AppServerSvc(win32serviceutil.ServiceFramework):
             except:
                 servicemanager.LogMsg(servicemanager.EVENTLOG_ERROR_TYPE, servicemanager.PYS_SERVICE_STARTED,
                                       (self._svc_name_, ''))
+
             rc = win32event.WaitForSingleObject(self.hWaitStop, 5000)
 
     def main(self):
