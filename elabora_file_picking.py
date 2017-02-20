@@ -10,6 +10,7 @@ import datetime
 class AppServerSvc(win32serviceutil.ServiceFramework):
     _svc_name_ = "elabora_file_picking"
     _svc_display_name_ = "elabora_file_picking"
+    _svc_description_ = "Elaboratore Email da fornitori verso picking"
 
     def __init__(self, args):
         win32serviceutil.ServiceFramework.__init__(self, args)
@@ -28,7 +29,6 @@ class AppServerSvc(win32serviceutil.ServiceFramework):
         date_now = datetime.datetime.now()
         while rc != win32event.WAIT_OBJECT_0:
             try:
-                print(1/0)
                 # Per impostazione predefinita leggo la mail ogni 10 minuti. Caso mai modificare o portare a parametro.
                 if datetime.datetime.now() - date_now > datetime.timedelta(minutes=10):
                     date_now = datetime.datetime.now()
