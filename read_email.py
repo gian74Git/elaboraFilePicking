@@ -7,7 +7,7 @@ import struct
 # import logging
 import os
 import sys
-from win32com.shell import shell, shellcon
+# from win32com.shell import shell, shellcon
 import servicemanager
 
 class read_email():
@@ -32,7 +32,8 @@ class read_email():
         try:
             mail = imaplib.IMAP4_SSL(self.parser.get('email_configuration', 'imap_ssl_server'))
             mail.port = self.parser.get('email_configuration', 'imap_port')
-            mail.login(self.parser.get('email_configuration', 'user_email'), self.parser.get('email_configuration', 'pwd_email'))
+            mail.login(self.parser.get('email_configuration', 'user_email'), self.parser.get('email_configuration',
+                                                                                             'pwd_email'))
             mail.select(readonly=0)
 
             retcode, msgs = mail.search(None, '(UNSEEN)')
@@ -66,12 +67,13 @@ class read_email():
                             servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
                                                   0xF000,  # Messaggio generico
                                                   (datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                                                  + " Trovato allegato: "
-                                                  + filename + ' da ' + email_domain, ""))
+                                                   + " Trovato allegato: "
+                                                   + filename + ' da ' + email_domain, ""))
 
                             # logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " Trovato allegato: "
                             #             + filename + ' da ' + email_domain)
-                            return {"raw_file": part.get_payload(decode=True), "file_name": filename, "domain": email_domain}
+                            return {"raw_file": part.get_payload(decode=True), "file_name": filename,
+                                    "domain": email_domain}
                             # Nel caso volessimo salvare i file in una cartella decisa
                             # sv_path = os.path.join(svdir, filename)
                             # if not os.path.isfile(sv_path):
@@ -128,7 +130,8 @@ class read_email():
            ([VFBLFILEDATA], [SFBLBOLLA], [SFBLFORNITORE], [SFBLCKY_CNT], [DFBLDATABOLLA])
            VALUES
            (Convert(varbinary, '%s'), '%s', '%s', '%s', '%s')
-           """ % (s_file, email_data["file_name"], rag_soc_forn, CKYForn, datetime.datetime.now().strftime("%Y-%m-%d"))))
+           """ % (s_file, email_data["file_name"], rag_soc_forn, CKYForn, datetime.datetime.now().strftime("%Y-%m-%d")))
+                            )
         last_row_id = self.cursor.lastrowid
 
         try:
@@ -164,7 +167,8 @@ class read_email():
             servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
                                   0xF000,  # Messaggio generico
                                   (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + str(sys.exc_info()[0]), ""))
-            # logging.error(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + "Errore inatteso scrittura dati: " + str(sys.exc_info()[0]))
+            # logging.error(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + "Errore inatteso scrittura dati: "
+            # + str(sys.exc_info()[0]))
 
         servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
                               0xF000,  # Messaggio generico
@@ -222,7 +226,7 @@ class read_email():
         # ************ ELMI utilizza file xls
         servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
                               0xF000,  # Messaggio generico
-                              (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00034", ""));
+                              (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00034", ""))
         # logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00034")
         import xlrd
 
