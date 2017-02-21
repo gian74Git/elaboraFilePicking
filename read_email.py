@@ -139,6 +139,9 @@ class read_email():
             if CKYForn == "341.00118":
                 return_list = self.write_dtl_00118(last_row_id, email_data)
 
+            if CKYForn == "341.00031":
+                return_list = self.write_dtl_00031(last_row_id, email_data)
+
             if CKYForn == "341.00032":
                 return_list = self.write_dtl_00032(last_row_id, email_data)
 
@@ -184,12 +187,29 @@ class read_email():
             return False
 
     def write_dtl_00031(self, id_fbl, email_data):
-        # ************ NEW FORM
+        # ************ NEW FORM utilizza file csv
         servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
                               0xF000,  # Messaggio generico
                               (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00031", ""))
 
         # logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00031")
+
+        num_bolla = 0
+
+        for file_row in email_data["raw_file"].decode().split("\n"):
+            riga_lista = file_row.replace("\n", "").replace("\r", "").split(";")
+            if len(riga_lista) >= 5:
+                qta = riga_lista[5].replace(",", ".")
+                if self.is_number(qta):
+                    data_bolla = riga_lista[1].replace('"', '')
+                    num_bolla = riga_lista[0].replace('"', '')
+                    cod_art = riga_lista[3].replace(".", "").replace('"', '')
+                    self.cursor.execute(
+                        "INSERT TDtb_DettaglioBolle (iFblId, sDtbCodArt, fDtbQta) VALUES (%d, '%s', %d)"
+                        %(id_fbl, cod_art, float(qta)))
+        return [num_bolla, datetime.datetime.strptime(data_bolla, "%Y%m%d").strftime("%Y-%m-%d"),
+                datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S"), id_fbl]
+
 
     def write_dtl_00032(self, id_fbl, email_data):
         # ************ FALMEC utilizza file txt
@@ -327,8 +347,8 @@ class read_email():
         return [num_bolla, datetime.datetime.strptime(str(data_bolla), "%Y%m%d").strftime("%Y-%m-%d"),
                 datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S"), id_fbl]
 
-#re = read_email()
-#email_data = re.get_mail()
-#while email_data:
-#    re.write_db_record(email_data)
-#    email_data = re.get_mail()
+re = read_email()
+email_data = re.get_mail()
+while email_data:
+    re.write_db_record(email_data)
+    email_data = re.get_mail()
