@@ -164,12 +164,12 @@ class read_email():
                                       (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + "EMail sconosciuta!", ""))
                 # logging.error(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + "EMail sconosciuta!")
 
-                self.conn.commit()
-
+            self.conn.commit()
         except:
             servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
                                   0xF000,  # Messaggio generico
                                   (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + str(sys.exc_info()[0]), ""))
+
             # logging.error(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + "Errore inatteso scrittura dati: "
             # + str(sys.exc_info()[0]))
 
@@ -202,7 +202,7 @@ class read_email():
                 qta = riga_lista[5].replace(",", ".")
                 if self.is_number(qta):
                     data_bolla = riga_lista[1].replace('"', '')
-                    num_bolla = riga_lista[0].replace('"', '')
+                    num_bolla = riga_lista[0].replace('"', '')[-6:]
                     cod_art = riga_lista[3].replace(".", "").replace('"', '')
                     self.cursor.execute(
                         "INSERT TDtb_DettaglioBolle (iFblId, sDtbCodArt, fDtbQta) VALUES (%d, '%s', %d)"
@@ -230,7 +230,7 @@ class read_email():
                 fields = parse(file_row.encode())
                 qta = fields[2].decode()
                 if self.is_number(qta):
-                    num_bolla = fields[0].decode()
+                    num_bolla = fields[0].decode()[-6:]
                     data_bolla = fields[1].decode()
                     cod_art = fields[3].decode()
                     if self.is_number(qta):
@@ -258,7 +258,7 @@ class read_email():
         for row in xl_sheet.get_rows():
             qta = row[12].value
             if self.is_number(qta):
-                num_bolla = row[1].value
+                num_bolla = row[1].value[-6:]
                 cod_art = row[9].value
                 data_bolla = row[2].value
                 self.cursor.execute(
@@ -280,15 +280,17 @@ class read_email():
 
         for file_row in email_data["raw_file"].decode().split("\n"):
             riga_lista = file_row.replace("\n", "").replace("\r", "").split(";")
-            if len(riga_lista.strip()) >= 5:
+            if len(riga_lista) >= 5:
                 qta = riga_lista[3]
                 if self.is_number(qta):
-                    num_bolla = riga_lista[0]
+                    num_bolla = riga_lista[0].replace("'", "")[-6:]
                     cod_art = riga_lista[1]
                     self.cursor.execute(
                         "INSERT TDtb_DettaglioBolle (iFblId, sDtbCodArt, fDtbQta) VALUES (%d, '%s', %d)"
                         %(id_fbl, cod_art, float(qta)))
-        return [num_bolla, "", datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S"), id_fbl]
+        # N.B.: il secondo parametro è la data bolla che al momento non mi viene passata nel file. DA GESTIRE.
+        return [num_bolla, datetime.datetime.strptime(str(data_bolla), "%d/%m/%Y").strftime("%Y-%m-%d  %H:%M:%S"),
+                datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S"), id_fbl]
 
 
     def write_dtl_00393(self, id_fbl, email_data):
@@ -307,7 +309,7 @@ class read_email():
             if len(riga_lista) >= 19:
                 qta = riga_lista[19]
                 if self.is_number(qta):
-                    num_bolla = riga_lista[0].strip()
+                    num_bolla = riga_lista[0].strip()[-6:]
                     cod_art = riga_lista[18].replace("/", "").strip()
                     data_bolla = riga_lista[1].strip()
 
@@ -335,7 +337,7 @@ class read_email():
         for row in xl_sheet.get_rows():
             # Considero soltanto le righe di tipo R. Assumo che le rige D siano descrizioni
             if row[69].value == "R":
-                num_bolla = row[4].value
+                num_bolla = row[4].value[-6:]
                 data_bolla = ''.join([str(s) for s in xlrd.xldate_as_tuple(row[6].value, 0) if s != 0])
                 qta = row[50].value
                 cod_art = row[47].value
@@ -347,8 +349,8 @@ class read_email():
         return [num_bolla, datetime.datetime.strptime(str(data_bolla), "%Y%m%d").strftime("%Y-%m-%d"),
                 datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S"), id_fbl]
 
-re = read_email()
-email_data = re.get_mail()
-while email_data:
-    re.write_db_record(email_data)
-    email_data = re.get_mail()
+#re = read_email()
+#email_data = re.get_mail()
+#while email_data:
+#    re.write_db_record(email_data)
+#    email_data = re.get_mail()
