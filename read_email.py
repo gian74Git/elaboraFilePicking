@@ -110,7 +110,7 @@ class read_email():
                 SINFCKY_CNT, CDS_CNT_RAGSOC
             FROM
                 TINF_INDIRIZZIFORNITORI
-                INNER JOIN %s%s_rudt ON (CKY_CNT = SINFCKY_CNT)
+                INNER JOIN %s%srudt ON (CKY_CNT = SINFCKY_CNT)
             WHERE
                 sInfDomForn = '%s'""" %
                        (self.parser.get('database_configuration', 'database_mexal'),
@@ -186,6 +186,20 @@ class read_email():
         except ValueError:
             return False
 
+    def get_ean_from_cod_forn(self, cod_art, cky_forn):
+        self.cursor.execute(
+            """
+            SELECT
+                LTrim(RTrim(CSG_ART_ALIAS)) as CSG_ART_ALIAS
+            FROM
+                $DBMEXAL$$PREFIXTAB$ARTM_FOR artmFor
+                INNER JOIN $DBMEXAL$$PREFIXTAB$ALIAS alias ON (alias.CKY_ART = artmFor.CKY_ART)
+            WHERE
+                CSG_ART_FOR = '%s' and artmFor.CKY_CNT_FORN = %s
+            """.replace("$DBMEXAL$", self.parser.get('database_configuration', 'database_mexal')).replace(
+                "$PREFIXTAB$", self.parser.get('database_configuration', 'prefix_mexal')) % (cod_art, cky_forn))
+        return self.cursor.fetchone()
+
     def write_dtl_00031(self, id_fbl, email_data):
         # ************ NEW FORM utilizza file csv
         servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
@@ -203,7 +217,8 @@ class read_email():
                 if self.is_number(qta):
                     data_bolla = riga_lista[1].replace('"', '')
                     num_bolla = riga_lista[0].replace('"', '')[-6:]
-                    cod_art = riga_lista[3].replace(".", "").replace('"', '')
+                    # Codice articolo = CODICE EAN
+                    cod_art = riga_lista[4].replace(".", "").replace('"', '')
                     self.cursor.execute(
                         "INSERT TDtb_DettaglioBolle (iFblId, sDtbCodArt, fDtbQta) VALUES (%d, '%s', %d)"
                         %(id_fbl, cod_art, float(qta)))
@@ -260,6 +275,11 @@ class read_email():
             if self.is_number(qta):
                 num_bolla = row[1].value[-6:]
                 cod_art = row[9].value
+
+                row_cod_art_ean = self.get_ean_from_cod_forn(cod_art, "341.00034")
+                if row_cod_art_ean is not None:
+                    cod_art = row_cod_art_ean[0]
+
                 data_bolla = row[2].value
                 self.cursor.execute(
                     "INSERT TDtb_DettaglioBolle (iFblId, sDtbCodArt, fDtbQta) VALUES (%d, '%s', %d)"
@@ -285,6 +305,10 @@ class read_email():
                 if self.is_number(qta):
                     num_bolla = riga_lista[0].replace("'", "")[-6:]
                     cod_art = riga_lista[1]
+                    row_cod_art_ean = self.get_ean_from_cod_forn(cod_art, "341.00118")
+                    if row_cod_art_ean is not None:
+                        cod_art = row_cod_art_ean[0]
+
                     self.cursor.execute(
                         "INSERT TDtb_DettaglioBolle (iFblId, sDtbCodArt, fDtbQta) VALUES (%d, '%s', %d)"
                         %(id_fbl, cod_art, float(qta)))
@@ -310,7 +334,8 @@ class read_email():
                 qta = riga_lista[19]
                 if self.is_number(qta):
                     num_bolla = riga_lista[0].strip()[-6:]
-                    cod_art = riga_lista[18].replace("/", "").strip()
+                    # Codice EAN
+                    cod_art = riga_lista[17].replace("/", "").strip()
                     data_bolla = riga_lista[1].strip()
 
                     self.cursor.execute(
@@ -340,7 +365,8 @@ class read_email():
                 num_bolla = row[4].value[-6:]
                 data_bolla = ''.join([str(s) for s in xlrd.xldate_as_tuple(row[6].value, 0) if s != 0])
                 qta = row[50].value
-                cod_art = row[47].value
+                # Codice EAN
+                cod_art = row[90].value
                 if self.is_number(qta):
                     self.cursor.execute(
                         "INSERT TDtb_DettaglioBolle (iFblId, sDtbCodArt, fDtbQta) VALUES (%d, '%s', %d)"
@@ -349,8 +375,8 @@ class read_email():
         return [num_bolla, datetime.datetime.strptime(str(data_bolla), "%Y%m%d").strftime("%Y-%m-%d"),
                 datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S"), id_fbl]
 
-#re = read_email()
-#email_data = re.get_mail()
-#while email_data:
-#    re.write_db_record(email_data)
-#    email_data = re.get_mail()
+re = read_email()
+email_data = re.get_mail()
+while email_data:
+    re.write_db_record(email_data)
+    email_data = re.get_mail()
