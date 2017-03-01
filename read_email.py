@@ -21,6 +21,7 @@ class read_email():
         self.parser = ConfigParser()
         self.parser.read(os.path.join(os.path.dirname(os.path.realpath(__file__)), "read_email.ini"))
         self.conn = pymssql.Connection
+        self.good_extensions = ['TXT', 'CSV', 'XLS', 'XLSX']
 
     def get_mail(self):
         servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
@@ -63,6 +64,10 @@ class read_email():
                             continue
 
                         filename = part.get_filename()
+                        try:
+                            self.good_extensions.index(filename[-3:].upper())
+                        except:
+                            continue
                         if filename is not None:
                             servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
                                                   0xF000,  # Messaggio generico
@@ -72,7 +77,16 @@ class read_email():
 
                             # logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " Trovato allegato: "
                             #             + filename + ' da ' + email_domain)
-                            return {"raw_file": part.get_payload(decode=True), "file_name": filename,
+                            try:
+                                local_raw_file =  part.get_payload(decode=True)
+                            except:
+                                servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
+                                                      0xF000,  # Messaggio generico
+                                                      (datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                                                       + " Scartato allegato: "
+                                                       + filename + ' da ' + email_domain, ""))
+
+                            return {"raw_file": local_raw_file, "file_name": filename,
                                     "domain": email_domain}
                             # Nel caso volessimo salvare i file in una cartella decisa
                             # sv_path = os.path.join(svdir, filename)
@@ -375,8 +389,8 @@ class read_email():
         return [num_bolla, datetime.datetime.strptime(str(data_bolla), "%Y%m%d").strftime("%Y-%m-%d"),
                 datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S"), id_fbl]
 
-re = read_email()
-email_data = re.get_mail()
-while email_data:
-    re.write_db_record(email_data)
-    email_data = re.get_mail()
+#re = read_email()
+#email_data = re.get_mail()
+#while email_data:
+#    re.write_db_record(email_data)
+#    email_data = re.get_mail()
