@@ -86,7 +86,7 @@ class read_email():
                                                        + " Scartato allegato: "
                                                        + filename + ' da ' + email_domain, ""))
 
-                            return {"raw_file": local_raw_file, "file_name": filename,
+                            return {"subject": m["subject"], "raw_file": local_raw_file, "file_name": filename,
                                     "domain": email_domain}
                             # Nel caso volessimo salvare i file in una cartella decisa
                             # sv_path = os.path.join(svdir, filename)
@@ -119,20 +119,37 @@ class read_email():
 
         CKYForn = ""
         rag_soc_forn = ""
-        self.cursor.execute("""
-            SELECT
-                SINFCKY_CNT, CDS_CNT_RAGSOC
-            FROM
-                TINF_INDIRIZZIFORNITORI
-                INNER JOIN %s%srudt ON (CKY_CNT = SINFCKY_CNT)
-            WHERE
-                sInfDomForn = '%s'""" %
-                       (self.parser.get('database_configuration', 'database_mexal'),
-                       self.parser.get('database_configuration', 'prefix_mexal'), email_data["domain"].split("@")[1]))
-        row = self.cursor.fetchone()
-        if row:
-            CKYForn = row[0]
-            rag_soc_forn = row[1]
+        # Gestione della decodifica del subject: se inizia per *** e subito dopo c'è un codice fornitore, prendo quello.
+        if email_data["subject"].startswith("***"):
+            CKYForn = email_data["subject"].replace("***", "").strip()
+        if CKYForn == "":
+            self.cursor.execute("""
+                SELECT
+                    SINFCKY_CNT, CDS_CNT_RAGSOC
+                FROM
+                    TINF_INDIRIZZIFORNITORI
+                    INNER JOIN %s%srudt ON (CKY_CNT = SINFCKY_CNT)
+                WHERE
+                    sInfDomForn = '%s'""" %
+                           (self.parser.get('database_configuration', 'database_mexal'),
+                           self.parser.get('database_configuration', 'prefix_mexal'), email_data["domain"].split("@")[1]))
+            row = self.cursor.fetchone()
+            if row:
+                CKYForn = row[0]
+                rag_soc_forn = row[1]
+        else:
+            self.cursor.execute("""
+                SELECT
+                    CDS_CNT_RAGSOC
+                FROM
+                    %s%srudt
+                WHERE
+                    CKY_CNT = '%s'
+            """ % (self.parser.get('database_configuration', 'database_mexal'),
+                   self.parser.get('database_configuration', 'prefix_mexal'), CKYForn))
+            row = self.cursor.fetchone()
+            if row:
+                rag_soc_forn = row[0]
 
         try:
             s_file = email_data["raw_file"].decode().replace("'", "")
@@ -389,8 +406,8 @@ class read_email():
         return [num_bolla, datetime.datetime.strptime(str(data_bolla), "%Y%m%d").strftime("%Y-%m-%d"),
                 datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S"), id_fbl]
 
-#re = read_email()
-#email_data = re.get_mail()
-#while email_data:
-#    re.write_db_record(email_data)
-#    email_data = re.get_mail()
+re = read_email()
+email_data = re.get_mail()
+while email_data:
+    re.write_db_record(email_data)
+    email_data = re.get_mail()
