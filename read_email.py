@@ -130,9 +130,9 @@ class read_email():
                     TINF_INDIRIZZIFORNITORI
                     INNER JOIN %s%srudt ON (CKY_CNT = SINFCKY_CNT)
                 WHERE
-                    sInfDomForn = '%s'""" %
-                           (self.parser.get('database_configuration', 'database_mexal'),
-                           self.parser.get('database_configuration', 'prefix_mexal'), email_data["domain"].split("@")[1]))
+                    sInfDomForn = '%s'""" %(self.parser.get('database_configuration', 'database_mexal'),
+                                            self.parser.get('database_configuration', 'prefix_mexal'),
+                                            email_data["domain"].split("@")[1]))
             row = self.cursor.fetchone()
             if row:
                 CKYForn = row[0]
@@ -278,7 +278,7 @@ class read_email():
                 if self.is_number(qta):
                     num_bolla = fields[0].decode()[-6:]
                     data_bolla = fields[1].decode()
-                    cod_art = fields[3].decode()
+                    cod_art = fields[3].decode().strip().replace(".", "")
                     if self.is_number(qta):
                         self.cursor.execute(
                             "INSERT TDtb_DettaglioBolle (iFblId, sDtbCodArt, fDtbQta) VALUES (%d, '%s', %d)"
@@ -366,7 +366,7 @@ class read_email():
                 if self.is_number(qta):
                     num_bolla = riga_lista[0].strip()[-6:]
                     # Codice EAN
-                    cod_art = riga_lista[17].replace("/", "").strip()
+                    cod_art = riga_lista[16].replace("/", "").strip()
                     data_bolla = riga_lista[1].strip()
 
                     self.cursor.execute(
@@ -393,11 +393,11 @@ class read_email():
         for row in xl_sheet.get_rows():
             # Considero soltanto le righe di tipo R. Assumo che le rige D siano descrizioni
             if row[69].value == "R":
-                num_bolla = row[4].value[-6:]
+                num_bolla = int(row[4].value)
                 data_bolla = ''.join([str(s) for s in xlrd.xldate_as_tuple(row[6].value, 0) if s != 0])
                 qta = row[50].value
                 # Codice EAN
-                cod_art = row[90].value
+                cod_art = row[80].value
                 if self.is_number(qta):
                     self.cursor.execute(
                         "INSERT TDtb_DettaglioBolle (iFblId, sDtbCodArt, fDtbQta) VALUES (%d, '%s', %d)"
@@ -406,8 +406,9 @@ class read_email():
         return [num_bolla, datetime.datetime.strptime(str(data_bolla), "%Y%m%d").strftime("%Y-%m-%d"),
                 datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S"), id_fbl]
 
-re = read_email()
-email_data = re.get_mail()
-while email_data:
-    re.write_db_record(email_data)
-    email_data = re.get_mail()
+#Debug purpose!!!
+#re = read_email()
+#mail_data = re.get_mail()
+#while email_data:
+#    re.write_db_record(email_data)
+#    email_data = re.get_mail()
