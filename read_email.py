@@ -9,6 +9,7 @@ import os
 import sys
 # from win32com.shell import shell, shellcon
 import servicemanager
+from send_email_info import send_email
 
 class read_email():
     def __init__(self):
@@ -22,8 +23,10 @@ class read_email():
         self.parser.read(os.path.join(os.path.dirname(os.path.realpath(__file__)), "read_email.ini"))
         self.conn = pymssql.Connection
         self.good_extensions = ['TXT', 'CSV', 'XLS', 'XLSX']
+        self.msg_to_send = ""
 
     def get_mail(self):
+        self.msg_to_send = ""
         servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
                               0xF000, #  Messaggio generico
                               (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " Controllo casella di posta", ""))
@@ -102,6 +105,7 @@ class read_email():
                                       + retcode, ""))
 
                 # logging.warning(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " controllo posta retcode: " + retcode)
+
                 return return_value
         except:
             servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
@@ -196,6 +200,12 @@ class read_email():
                 # logging.error(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + "EMail sconosciuta!")
 
             self.conn.commit()
+
+            if self.msg_to_send != "":
+                send_mail_obj = send_email()
+                send_mail_obj.send_msg("\r\n\r\n".join(["ATTENZIONE: CODICI ALIAS NON TROVATI:", self.msg_to_send]))
+                self.msg_to_send = ""
+
         except:
             servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
                                   0xF000,  # Messaggio generico
@@ -229,6 +239,7 @@ class read_email():
                 CSG_ART_FOR = '%s' and artmFor.CKY_CNT_FORN = %s
             """.replace("$DBMEXAL$", self.parser.get('database_configuration', 'database_mexal')).replace(
                 "$PREFIXTAB$", self.parser.get('database_configuration', 'prefix_mexal')) % (cod_art, cky_forn))
+        self.msg_to_send = "\r\n".join([self.msg_to_send, "Codice file %s, fornitore %s non trovato alias." %(cod_art, cky_forn)])
         return self.cursor.fetchone()
 
     def write_dtl_00031(self, id_fbl, email_data):
@@ -248,8 +259,12 @@ class read_email():
                 if self.is_number(qta):
                     data_bolla = riga_lista[1].replace('"', '')
                     num_bolla = riga_lista[0].replace('"', '')[-6:]
-                    # Codice articolo = CODICE EAN
+                    # Leggo codice EAN dal file e lo scrivo nel database frontiera. Non necessita di alcuna riconversione
                     cod_art = riga_lista[4].replace(".", "").replace('"', '')
+                    # In questo caso serve solo per compilare il messaggio mail da inviare altrimenti
+                    # mi accorgerei della mancanza del codice soltanto a livello pistole!!
+                    self.get_ean_from_cod_forn(cod_art, "341.00031")
+
                     self.cursor.execute(
                         "INSERT TDtb_DettaglioBolle (iFblId, sDtbCodArt, fDtbQta) VALUES (%d, '%s', %d)"
                         %(id_fbl, cod_art, float(qta)))
@@ -263,7 +278,7 @@ class read_email():
                               0xF000,  # Messaggio generico
                               (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00032", ""))
         # logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00032")
-        fieldwidths = (4, -2, 8, -5, 4, 23, -23, 6, )  # I campi valori rappresentano i campi da ignorare.
+        fieldwidths = (4, -2, 8, -9, 23, -13, 6, 6,)  # I campi negativi rappresentano i campi da ignorare.
         fmtstring = ' '.join('{}{}'.format(abs(fw), 'x' if fw < 0 else 's') for fw in fieldwidths)
         fieldstruct = struct.Struct(fmtstring)
         parse = fieldstruct.unpack_from
@@ -274,11 +289,11 @@ class read_email():
         for file_row in email_data["raw_file"].decode().split("\n"):
             if len(file_row) > 100:
                 fields = parse(file_row.encode())
-                qta = fields[2].decode()
+                qta = fields[3].decode().replace(",", ".")
                 if self.is_number(qta):
                     num_bolla = fields[0].decode()[-6:]
                     data_bolla = fields[1].decode()
-                    cod_art = fields[3].decode().strip().replace(".", "")
+                    cod_art = fields[2].decode().strip().replace(".", "")
                     if self.is_number(qta):
                         self.cursor.execute(
                             "INSERT TDtb_DettaglioBolle (iFblId, sDtbCodArt, fDtbQta) VALUES (%d, '%s', %d)"
@@ -304,7 +319,7 @@ class read_email():
         for row in xl_sheet.get_rows():
             qta = row[12].value
             if self.is_number(qta):
-                num_bolla = row[1].value[-6:]
+                num_bolla = int(row[1].value)
                 cod_art = row[9].value
 
                 row_cod_art_ean = self.get_ean_from_cod_forn(cod_art, "341.00034")
@@ -365,8 +380,13 @@ class read_email():
                 qta = riga_lista[19]
                 if self.is_number(qta):
                     num_bolla = riga_lista[0].strip()[-6:]
-                    # Codice EAN
+
+                    # Leggo codice EAN dal file e lo scrivo nel database frontiera. Non necessita di alcuna riconversione
                     cod_art = riga_lista[16].replace("/", "").strip()
+                    # In questo caso serve solo per compilare il messaggio mail da inviare altrimenti
+                    # mi accorgerei della mancanza del codice soltanto a livello pistole!!
+                    self.get_ean_from_cod_forn(cod_art, "341.00393")
+
                     data_bolla = riga_lista[1].strip()
 
                     self.cursor.execute(
@@ -396,8 +416,13 @@ class read_email():
                 num_bolla = int(row[4].value)
                 data_bolla = ''.join([str(s) for s in xlrd.xldate_as_tuple(row[6].value, 0) if s != 0])
                 qta = row[50].value
-                # Codice EAN
+                # Leggo codice EAN dal file e lo scrivo nel database frontiera. Non necessita di alcuna riconversione
                 cod_art = row[80].value
+
+                # In questo caso serve solo per compilare il messaggio mail da inviare altrimenti
+                # mi accorgerei della mancanza del codice soltanto a livello pistole!!
+                self.get_ean_from_cod_forn(cod_art, "341.00393")
+
                 if self.is_number(qta):
                     self.cursor.execute(
                         "INSERT TDtb_DettaglioBolle (iFblId, sDtbCodArt, fDtbQta) VALUES (%d, '%s', %d)"
@@ -408,7 +433,7 @@ class read_email():
 
 #Debug purpose!!!
 #re = read_email()
-#mail_data = re.get_mail()
+#email_data = re.get_mail()
 #while email_data:
 #    re.write_db_record(email_data)
 #    email_data = re.get_mail()
