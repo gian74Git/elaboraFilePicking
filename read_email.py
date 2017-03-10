@@ -156,7 +156,10 @@ class read_email():
                 rag_soc_forn = row[0]
 
         try:
-            s_file = email_data["raw_file"].decode().replace("'", "")
+            try:
+                s_file = email_data["raw_file"].decode().replace("'", "")
+            except:
+                s_file = email_data["raw_file"].decode("latin-1").replace("'", "")
         except:
             import binascii
             s_file = '0x' + binascii.hexlify(email_data["raw_file"]).decode('ascii')
@@ -199,12 +202,15 @@ class read_email():
                                       (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + "EMail sconosciuta!", ""))
                 # logging.error(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + "EMail sconosciuta!")
 
-            self.conn.commit()
-
-            if self.msg_to_send != "":
+            if self.msg_to_send == "":
+                self.conn.commit()
+            else:
                 send_mail_obj = send_email()
-                send_mail_obj.send_msg("\r\n\r\n".join(["ATTENZIONE: CODICI ALIAS NON TROVATI:", self.msg_to_send]))
+                send_mail_obj.send_msg("\r\n\r\n".join(["ATTENZIONE: Messaggio non elaborato." +
+                                                        "BOLLA: %s Fornitore: %s" % (return_list[0], CKYForn) +
+                                                        " CODICI ALIAS NON TROVATI:", self.msg_to_send]))
                 self.msg_to_send = ""
+
 
         except:
             servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
@@ -227,6 +233,25 @@ class read_email():
         except ValueError:
             return False
 
+    def get_ean_from_cod_alias(self, cod_art, cky_forn):
+        self.cursor.execute(
+            """
+            SELECT
+              LTrim(RTrim(CSG_ART_ALIAS)) as CSG_ART_ALIAS
+            FROM
+              $DBMEXAL$$PREFIXTAB$ALIAS
+            WHERE
+              CSG_ART_ALIAS = '%s'
+            """.replace("$DBMEXAL$", self.parser.get('database_configuration', 'database_mexal')).replace(
+                "$PREFIXTAB$", self.parser.get('database_configuration', 'prefix_mexal')) % cod_art)
+
+        ret_val = self.cursor.fetchone()
+        if ret_val is None:
+            self.msg_to_send = "\r\n".join([self.msg_to_send, "Codice file %s, fornitore %s non trovato alias."
+                                            % (cod_art, cky_forn)])
+        return ret_val
+
+
     def get_ean_from_cod_forn(self, cod_art, cky_forn):
         self.cursor.execute(
             """
@@ -239,8 +264,11 @@ class read_email():
                 CSG_ART_FOR = '%s' and artmFor.CKY_CNT_FORN = %s
             """.replace("$DBMEXAL$", self.parser.get('database_configuration', 'database_mexal')).replace(
                 "$PREFIXTAB$", self.parser.get('database_configuration', 'prefix_mexal')) % (cod_art, cky_forn))
-        self.msg_to_send = "\r\n".join([self.msg_to_send, "Codice file %s, fornitore %s non trovato alias." %(cod_art, cky_forn)])
-        return self.cursor.fetchone()
+
+        ret_val = self.cursor.fetchone()
+        if ret_val is None:
+            self.msg_to_send = "\r\n".join([self.msg_to_send, "Codice file %s, fornitore %s non trovato alias." %(cod_art, cky_forn)])
+        return ret_val
 
     def write_dtl_00031(self, id_fbl, email_data):
         # ************ NEW FORM utilizza file csv
@@ -263,7 +291,7 @@ class read_email():
                     cod_art = riga_lista[4].replace(".", "").replace('"', '')
                     # In questo caso serve solo per compilare il messaggio mail da inviare altrimenti
                     # mi accorgerei della mancanza del codice soltanto a livello pistole!!
-                    self.get_ean_from_cod_forn(cod_art, "341.00031")
+                    self.get_ean_from_cod_alias(cod_art, "341.00031")
 
                     self.cursor.execute(
                         "INSERT TDtb_DettaglioBolle (iFblId, sDtbCodArt, fDtbQta) VALUES (%d, '%s', %d)"
@@ -278,7 +306,8 @@ class read_email():
                               0xF000,  # Messaggio generico
                               (datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00032", ""))
         # logging.info(datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " write_dtl_00032")
-        fieldwidths = (4, -2, 8, -9, 23, -13, 6, 6,)  # I campi negativi rappresentano i campi da ignorare.
+        #fieldwidths = (4, -2, 8, -9, 23, -13, 6, 6,)  # I campi negativi rappresentano i campi da ignorare.
+        fieldwidths = (4, -2, 8, -9, -23, 13, 6, 6,)  # I campi negativi rappresentano i campi da ignorare.
         fmtstring = ' '.join('{}{}'.format(abs(fw), 'x' if fw < 0 else 's') for fw in fieldwidths)
         fieldstruct = struct.Struct(fmtstring)
         parse = fieldstruct.unpack_from
@@ -286,7 +315,11 @@ class read_email():
         num_bolla = 0
         data_bolla = datetime.datetime.now().strftime("%d%m%Y")
 
-        for file_row in email_data["raw_file"].decode().split("\n"):
+        try:
+            data = email_data["raw_file"].decode().split("\n")
+        except:
+            data = email_data["raw_file"].decode("latin-1").split("\n")
+        for file_row in data:
             if len(file_row) > 100:
                 fields = parse(file_row.encode())
                 qta = fields[3].decode().replace(",", ".")
@@ -294,6 +327,9 @@ class read_email():
                     num_bolla = fields[0].decode()[-6:]
                     data_bolla = fields[1].decode()
                     cod_art = fields[2].decode().strip().replace(".", "")
+                    if cod_art == "":
+                        cod_art = "RICAMBI"
+                    self.get_ean_from_cod_alias(cod_art, "341.00032")
                     if self.is_number(qta):
                         self.cursor.execute(
                             "INSERT TDtb_DettaglioBolle (iFblId, sDtbCodArt, fDtbQta) VALUES (%d, '%s', %d)"
@@ -385,7 +421,7 @@ class read_email():
                     cod_art = riga_lista[16].replace("/", "").strip()
                     # In questo caso serve solo per compilare il messaggio mail da inviare altrimenti
                     # mi accorgerei della mancanza del codice soltanto a livello pistole!!
-                    self.get_ean_from_cod_forn(cod_art, "341.00393")
+                    self.get_ean_from_cod_alias(cod_art, "341.00393")
 
                     data_bolla = riga_lista[1].strip()
 
@@ -421,7 +457,7 @@ class read_email():
 
                 # In questo caso serve solo per compilare il messaggio mail da inviare altrimenti
                 # mi accorgerei della mancanza del codice soltanto a livello pistole!!
-                self.get_ean_from_cod_forn(cod_art, "341.00393")
+                self.get_ean_from_cod_alias(cod_art, "341.00393")
 
                 if self.is_number(qta):
                     self.cursor.execute(
