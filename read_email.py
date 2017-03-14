@@ -155,12 +155,17 @@ class read_email():
             if row:
                 rag_soc_forn = row[0]
 
-        try:
+        # Se il file è excel decodifico subito in ascii con binascii.hexlify
+        if (email_data["file_name"][-3:].upper() != 'XLS') & (email_data["file_name"][-3:].upper() != 'XLSX'):
             try:
-                s_file = email_data["raw_file"].decode().replace("'", "")
+                try:  # Se il file non contiene caratteri particolari (eg. °)
+                    s_file = email_data["raw_file"].decode().replace("'", "")
+                except: # Altrimenti li gestisco con latin-1
+                    s_file = email_data["raw_file"].decode("latin-1").replace("'", "")
             except:
-                s_file = email_data["raw_file"].decode("latin-1").replace("'", "")
-        except:
+                import binascii
+                s_file = '0x' + binascii.hexlify(email_data["raw_file"]).decode('ascii')
+        else:
             import binascii
             s_file = '0x' + binascii.hexlify(email_data["raw_file"]).decode('ascii')
 
@@ -241,7 +246,7 @@ class read_email():
             FROM
               $DBMEXAL$$PREFIXTAB$ALIAS
             WHERE
-              CSG_ART_ALIAS = '%s'
+              LTrim(RTrim(CSG_ART_ALIAS)) = '%s'
             """.replace("$DBMEXAL$", self.parser.get('database_configuration', 'database_mexal')).replace(
                 "$PREFIXTAB$", self.parser.get('database_configuration', 'prefix_mexal')) % cod_art)
 
@@ -261,7 +266,7 @@ class read_email():
                 $DBMEXAL$$PREFIXTAB$ARTM_FOR artmFor
                 INNER JOIN $DBMEXAL$$PREFIXTAB$ALIAS alias ON (alias.CKY_ART = artmFor.CKY_ART)
             WHERE
-                CSG_ART_FOR = '%s' and artmFor.CKY_CNT_FORN = %s
+                LTrim(RTrim(CSG_ART_FOR)) = '%s' and artmFor.CKY_CNT_FORN = '%s'
             """.replace("$DBMEXAL$", self.parser.get('database_configuration', 'database_mexal')).replace(
                 "$PREFIXTAB$", self.parser.get('database_configuration', 'prefix_mexal')) % (cod_art, cky_forn))
 
@@ -353,7 +358,7 @@ class read_email():
         xl_workbook = xlrd.open_workbook(file_contents=email_data["raw_file"])
         xl_sheet = xl_workbook.sheet_by_index(0)
         for row in xl_sheet.get_rows():
-            qta = row[12].value
+            qta = row[13].value
             if self.is_number(qta):
                 num_bolla = int(row[1].value)
                 cod_art = row[9].value
@@ -455,14 +460,15 @@ class read_email():
                 # Leggo codice EAN dal file e lo scrivo nel database frontiera. Non necessita di alcuna riconversione
                 cod_art = row[80].value
 
-                # In questo caso serve solo per compilare il messaggio mail da inviare altrimenti
-                # mi accorgerei della mancanza del codice soltanto a livello pistole!!
-                self.get_ean_from_cod_alias(cod_art, "341.00393")
+                if cod_art[:3] != "400":    # Da quello che vedo i codici che iniziano per 400 sono Imballi.
+                    # In questo caso serve solo per compilare il messaggio mail da inviare altrimenti
+                    # mi accorgerei della mancanza del codice soltanto a livello pistole!!
+                    self.get_ean_from_cod_alias(cod_art, "341.00393")
 
-                if self.is_number(qta):
-                    self.cursor.execute(
-                        "INSERT TDtb_DettaglioBolle (iFblId, sDtbCodArt, fDtbQta) VALUES (%d, '%s', %d)"
-                        %(id_fbl, cod_art, float(qta)))
+                    if self.is_number(qta):
+                        self.cursor.execute(
+                            "INSERT TDtb_DettaglioBolle (iFblId, sDtbCodArt, fDtbQta) VALUES (%d, '%s', %d)"
+                            %(id_fbl, cod_art, float(qta)))
 
         return [num_bolla, datetime.datetime.strptime(str(data_bolla), "%Y%m%d").strftime("%Y-%m-%d"),
                 datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S"), id_fbl]
