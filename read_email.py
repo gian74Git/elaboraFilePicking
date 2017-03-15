@@ -291,7 +291,7 @@ class read_email():
                 qta = riga_lista[5].replace(",", ".")
                 if self.is_number(qta):
                     data_bolla = riga_lista[1].replace('"', '')
-                    num_bolla = riga_lista[0].replace('"', '')[-6:]
+                    num_bolla = str(int(riga_lista[0].replace('"', '')[-6:]))
                     # Leggo codice EAN dal file e lo scrivo nel database frontiera. Non necessita di alcuna riconversione
                     cod_art = riga_lista[4].replace(".", "").replace('"', '')
                     # In questo caso serve solo per compilare il messaggio mail da inviare altrimenti
